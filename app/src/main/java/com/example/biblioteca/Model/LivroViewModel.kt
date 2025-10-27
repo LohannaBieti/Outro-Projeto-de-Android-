@@ -24,7 +24,6 @@ class LivroViewModel : ViewModel() {
         }
     }
 
-    // Função para atualizar o status de um livro
     fun atualizarStatus(id: String, novoStatus: String) {
         viewModelScope.launch {
             try {
@@ -35,7 +34,8 @@ class LivroViewModel : ViewModel() {
                 val livro = livros.find { it.id == id }
                 livro?.let {
                     // Substitui o livro na lista com o novo status
-                    val livroAtualizado = it.copy(status = novoStatus)
+                    val livroAtualizado =
+                        it.atualizarStatus(novoStatus) // Usa o método atualizarStatus
                     val index = livros.indexOf(it)
                     livros[index] = livroAtualizado
                 }

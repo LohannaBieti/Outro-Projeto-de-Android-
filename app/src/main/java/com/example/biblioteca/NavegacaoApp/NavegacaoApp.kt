@@ -83,8 +83,21 @@ fun TelaDetalhes(livro: Livro, onMarcarComoLido: () -> Unit, onMarcarComoFavorit
 
 @Preview(showBackground = true)
 @Composable
-fun DefaultPreview() {
+fun TelaPrincipalPreview() {
     BibliotecaTheme {
-        NavegacaoApp()
+        // Usa um navController falso apenas para o preview
+        TelaPrincipal(navController = rememberNavController())
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun TelaDetalhesPreview() {
+    BibliotecaTheme {
+        TelaDetalhes(
+            livro = Livro("1", "Dom Casmurro", "Machado de Assis", "Romance", "Não lido"),
+            onMarcarComoLido = {},
+            onMarcarComoFavorito = {}
+        )
     }
 }
