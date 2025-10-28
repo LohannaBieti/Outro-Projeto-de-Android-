@@ -1,43 +1,58 @@
-package com.example.biblioteca.NavegacaoApp
+package com.example.biblioteca.navegacao
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import com.example.biblioteca.Model.Livro
-import com.example.biblioteca.ui.theme.BibliotecaTheme
+import androidx.navigation.NavType
+import androidx.navigation.compose.*
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.biblioteca.model.Livro
+import com.example.biblioteca.model.LivroViewModel
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+import androidx.navigation.navArgument
 
-// Simulação de dados dos livros (idealmente, isso seria do ViewModel)
-val livros = listOf(
-    Livro("1", "Livro 1", "Autor A", "Físico", "Não Lido"),
-    Livro("2", "Livro 2", "Autor B", "Digital", "Lido")
-)
+import androidx.compose.material3.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.Icons
 
 @Composable
 fun NavegacaoApp() {
     val navController = rememberNavController()
-
     NavHost(navController = navController, startDestination = "principal") {
         composable("principal") {
-            TelaPrincipal(navController)
+            val viewModel: LivroViewModel = viewModel()
+            TelaPrincipal(
+                livros = viewModel.livros,
+                onItemClick = { id -> navController.navigate("detalhes/$id") }
+            )
         }
-        composable("detalhes/{livroId}") { backStackEntry ->
+        composable(
+            route = "detalhes/{livroId}",
+            arguments = listOf(navArgument("livroId") { type = NavType.StringType })
+        ) { backStackEntry ->
             val livroId = backStackEntry.arguments?.getString("livroId")
-            livroId?.let {
-                val livro = livros.find { it.id == livroId }
-                livro?.let {
-                    TelaDetalhes(livro = it, onMarcarComoLido = { /* Atualizar status */ }, onMarcarComoFavorito = { /* Atualizar status */ })
+            val viewModel: LivroViewModel = viewModel()
+            if (livroId == null) {
+                // rota inválida
+                TelaErro("Livro inválido")
+            } else {
+                val livro = viewModel.findLivroById(livroId)
+                if (livro == null) {
+                    TelaErro("Livro não encontrado")
+                } else {
+                    TelaDetalhes(
+                        livro = livro,
+                        onMarcarComoLido = { viewModel.atualizarStatus(livro.id, "Lido") },
+                        onMarcarComoFavorito = { /* implemente favorito */ },
+                        onBack = { navController.popBackStack() }
+                    )
                 }
             }
         }
@@ -45,59 +60,82 @@ fun NavegacaoApp() {
 }
 
 @Composable
-fun TelaPrincipal(navController: NavController) {
-    Column {
-        livros.forEach { livro ->
-            Button(onClick = {
-                navController.navigate("detalhes/${livro.id}")
-            }) {
-                Text(text = livro.titulo)
+fun TelaPrincipal(livros: List<Livro>, onItemClick: (String) -> Unit) {
+    Surface(modifier = Modifier.fillMaxSize()) {
+        if (livros.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Carregando livros...")
+            }
+        } else {
+            LazyColumn(modifier = Modifier.padding(12.dp)) {
+                items(livros) { livro ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp)
+                            .clickable { onItemClick(livro.id) },
+                        shape = RoundedCornerShape(8.dp),
+                        elevation = CardDefaults.cardElevation(4.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(text = livro.titulo, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(4.dp))
+                            Text(text = "Autor: ${livro.autor}", style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.height(6.dp))
+                            Text(text = "Status: ${livro.status}", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TelaDetalhes(livro: Livro, onMarcarComoLido: () -> Unit, onMarcarComoFavorito: () -> Unit) {
-    Column(modifier = Modifier.padding(16.dp)) {
-        // Usando headlineLarge para o título do livro
-        Text(text = "Título: ${livro.titulo}", style = MaterialTheme.typography.headlineLarge)
-
-        // Usando bodyMedium para o autor
-        Text(text = "Autor: ${livro.autor}", style = MaterialTheme.typography.bodyMedium)
-
-        // Usando bodySmall para a categoria
-        Text(text = "Categoria: ${livro.categoria}", style = MaterialTheme.typography.bodySmall)
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(onClick = onMarcarComoLido) {
-            Text("Marcar como Lido")
+fun TelaDetalhes(
+    livro: Livro,
+    onMarcarComoLido: () -> Unit,
+    onMarcarComoFavorito: () -> Unit,
+    onBack: () -> Unit
+) {
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text(text = livro.titulo) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Voltar"
+                        )
+                    }
+                }
+            )
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = onMarcarComoFavorito) {
-            Text("Marcar como Favorito")
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding).padding(16.dp)) {
+            Text(text = "Título: ${livro.titulo}", style = MaterialTheme.typography.headlineLarge)
+            Spacer(Modifier.height(8.dp))
+            Text(text = "Autor: ${livro.autor}", style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(4.dp))
+            Text(text = "Categoria: ${livro.categoria}", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = onMarcarComoLido, modifier = Modifier.fillMaxWidth()) {
+                Text("Marcar como Lido")
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onMarcarComoFavorito, modifier = Modifier.fillMaxWidth()) {
+                Text("Marcar como Favorito")
+            }
         }
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun TelaPrincipalPreview() {
-    BibliotecaTheme {
-        // Usa um navController falso apenas para o preview
-        TelaPrincipal(navController = rememberNavController())
-    }
-}
 
-@Preview(showBackground = true)
 @Composable
-fun TelaDetalhesPreview() {
-    BibliotecaTheme {
-        TelaDetalhes(
-            livro = Livro("1", "Dom Casmurro", "Machado de Assis", "Romance", "Não lido"),
-            onMarcarComoLido = {},
-            onMarcarComoFavorito = {}
-        )
+fun TelaErro(mensagem: String) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(text = mensagem)
     }
 }

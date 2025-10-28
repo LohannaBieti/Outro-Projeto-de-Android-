@@ -1,6 +1,6 @@
 package com.example.biblioteca.repository
 
-import com.example.biblioteca.Model.Livro
+import com.example.biblioteca.model.Livro
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
