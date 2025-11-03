@@ -7,8 +7,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+// --- UiState ATUALIZADO ---
 data class UiState(
     val loading: Boolean = false,
+    val isSaving: Boolean = false, // <-- NOVO: Para feedback de salvamento
     val livros: List<Livro> = emptyList(),
     val error: String? = null
 )
@@ -17,6 +19,7 @@ class LivroViewModel(
     private val repository: LivroRepository = LivroRepository() // prefer Hilt in real projeto
 ) : ViewModel() {
 
+    // --- _ui ATUALIZADO ---
     private val _ui = MutableStateFlow(UiState(loading = true))
     val ui: StateFlow<UiState> = _ui
 
@@ -24,9 +27,12 @@ class LivroViewModel(
 
     fun carregarLivros() {
         viewModelScope.launch {
-            _ui.value = UiState(loading = true)
+            // Garante que 'isSaving' seja resetado se estava carregando
+            _ui.value = _ui.value.copy(loading = true, isSaving = false)
             repository.getLivros().fold(
-                onSuccess = { list -> _ui.value = UiState(loading = false, livros = list) },
+                onSuccess = { list ->
+                    _ui.value = _ui.value.copy(loading = false, livros = list)
+                },
                 onFailure = { e ->
                     // fallback local pequeno para não quebrar UI
                     val fallback = listOf(
@@ -34,6 +40,31 @@ class LivroViewModel(
                         LivroDigital(id = "2", titulo = "Livro 2", autor = "Autor B", url = "https://")
                     )
                     _ui.value = UiState(loading = false, livros = fallback, error = e.message)
+                }
+            )
+        }
+    }
+
+    // --- NOVA FUNÇÃO ADICIONADA ---
+    /**
+     * Tenta adicionar um novo livro.
+     * @param livro O objeto Livro (Fisico ou Digital) criado pela UI.
+     * @param onSucesso Callback para ser executado se o livro for salvo (ex: navegar para trás).
+     */
+    fun adicionarLivro(livro: Livro, onSucesso: () -> Unit) {
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(isSaving = true) // Inicia o feedback de 'Salvando'
+            repository.addLivro(livro).fold(
+                onSuccess = {
+                    _ui.value = _ui.value.copy(isSaving = false)
+                    // Chama a navegação de volta
+                    onSucesso()
+                    // Recarrega a lista para incluir o novo livro
+                    carregarLivros()
+                },
+                onFailure = { e ->
+                    // Para o 'Salvando' e reporta o erro
+                    _ui.value = _ui.value.copy(isSaving = false, error = e.message ?: "Erro ao salvar")
                 }
             )
         }
