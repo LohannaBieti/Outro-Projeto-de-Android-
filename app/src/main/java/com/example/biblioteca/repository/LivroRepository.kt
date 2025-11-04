@@ -61,12 +61,6 @@ class LivroRepository {
         Result.failure(e)
     }
 
-    // --- NOVO MÉTODO ADICIONADO ---
-    /**
-     * Adiciona um novo livro ao Firestore.
-     * Converte o objeto Livro em um Mapa, garantindo que o campo 'tipo' seja salvo
-     * para que getLivros() possa desserializá-lo corretamente.
-     */
     suspend fun addLivro(livro: Livro): Result<Unit> = try {
         // Constrói o mapa de dados a ser salvo
         val dadosDoLivro: Map<String, Any> = when (livro) {
@@ -92,6 +86,17 @@ class LivroRepository {
         collection.add(dadosDoLivro).await()
         Result.success(Unit)
 
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
+    // --- NOVA FUNÇÃO DE DELETAR LIVRO ---
+    /**
+     * Deleta um livro do Firestore usando seu ID.
+     */
+    suspend fun deletarLivro(id: String): Result<Unit> = try {
+        collection.document(id).delete().await()
+        Result.success(Unit)
     } catch (e: Exception) {
         Result.failure(e)
     }

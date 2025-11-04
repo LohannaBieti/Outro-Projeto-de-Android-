@@ -10,7 +10,7 @@ import kotlinx.coroutines.launch
 // --- UiState ATUALIZADO ---
 data class UiState(
     val loading: Boolean = false,
-    val isSaving: Boolean = false, // <-- NOVO: Para feedback de salvamento
+    val isSaving: Boolean = false, // Para feedback de salvamento/deletar
     val livros: List<Livro> = emptyList(),
     val error: String? = null
 )
@@ -19,7 +19,6 @@ class LivroViewModel(
     private val repository: LivroRepository = LivroRepository() // prefer Hilt in real projeto
 ) : ViewModel() {
 
-    // --- _ui ATUALIZADO ---
     private val _ui = MutableStateFlow(UiState(loading = true))
     val ui: StateFlow<UiState> = _ui
 
@@ -45,11 +44,8 @@ class LivroViewModel(
         }
     }
 
-    // --- NOVA FUNÇÃO ADICIONADA ---
     /**
      * Tenta adicionar um novo livro.
-     * @param livro O objeto Livro (Fisico ou Digital) criado pela UI.
-     * @param onSucesso Callback para ser executado se o livro for salvo (ex: navegar para trás).
      */
     fun adicionarLivro(livro: Livro, onSucesso: () -> Unit) {
         viewModelScope.launch {
@@ -57,14 +53,33 @@ class LivroViewModel(
             repository.addLivro(livro).fold(
                 onSuccess = {
                     _ui.value = _ui.value.copy(isSaving = false)
-                    // Chama a navegação de volta
                     onSucesso()
-                    // Recarrega a lista para incluir o novo livro
                     carregarLivros()
                 },
                 onFailure = { e ->
-                    // Para o 'Salvando' e reporta o erro
                     _ui.value = _ui.value.copy(isSaving = false, error = e.message ?: "Erro ao salvar")
+                }
+            )
+        }
+    }
+
+    // --- NOVA FUNÇÃO DE DELETAR LIVRO ---
+    /**
+     * Tenta deletar um livro.
+     * @param id O ID do livro a ser deletado.
+     * @param onSucesso Callback para ser executado se o livro for deletado (ex: navegar para trás).
+     */
+    fun deletarLivro(id: String, onSucesso: () -> Unit) {
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(isSaving = true) // Inicia o feedback
+            repository.deletarLivro(id).fold(
+                onSuccess = {
+                    _ui.value = _ui.value.copy(isSaving = false)
+                    onSucesso()
+                    carregarLivros() // Recarrega a lista para remover o livro deletado
+                },
+                onFailure = { e ->
+                    _ui.value = _ui.value.copy(isSaving = false, error = e.message ?: "Erro ao deletar")
                 }
             )
         }

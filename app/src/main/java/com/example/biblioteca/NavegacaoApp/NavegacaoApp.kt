@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog // <-- NOVO IMPORT
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -34,6 +35,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton // <-- NOVO IMPORT
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,7 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel // <-- Import principal
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -59,19 +61,12 @@ import com.example.biblioteca.ui.theme.BibliotecaTheme
 @Composable
 fun NavegacaoApp() {
     val navController = rememberNavController()
-
-    // --- MUDANÇA ---
-    // O ViewModel é inicializado AQUI, uma única vez, no escopo do NavHost.
-    // Todas as telas que o usarem receberão esta mesma instância.
     val viewModel: LivroViewModel = viewModel()
 
     NavHost(navController = navController, startDestination = "principal") {
 
-        // --- TELA PRINCIPAL (MODIFICADA) ---
+        // --- TELA PRINCIPAL ---
         composable("principal") {
-            // --- MUDANÇA ---
-            // Não criamos um novo VM. Apenas lemos o state do VM compartilhado.
-            // val viewModel: LivroViewModel = viewModel() // <-- LINHA ANTIGA REMOVIDA
             val state by viewModel.ui.collectAsState()
 
             Scaffold(
@@ -89,7 +84,7 @@ fun NavegacaoApp() {
                     livros = state.livros,
                     error = state.error,
                     onItemClick = { id -> navController.navigate("detalhes/$id") },
-                    onRefresh = { viewModel.carregarLivros() } // Passa a função do VM compartilhado
+                    onRefresh = { viewModel.carregarLivros() }
                 )
             }
         }
@@ -100,24 +95,26 @@ fun NavegacaoApp() {
             arguments = listOf(navArgument("livroId") { type = NavType.StringType })
         ) { backStackEntry ->
             val livroId = backStackEntry.arguments?.getString("livroId")
-
-            // --- MUDANÇA ---
-            // Não criamos um novo VM. Usamos o VM compartilhado.
-            // val viewModel: LivroViewModel = viewModel() // <-- LINHA ANTIGA REMOVIDA
+            val state by viewModel.ui.collectAsState() // <-- NOVO: Para obter o estado de 'isSaving'
 
             if (livroId == null) {
                 TelaErro("Livro inválido")
             } else {
-                // Busca o livro direto do estado atual do VM compartilhado
                 val livro = viewModel.findLivroById(livroId)
                 if (livro == null) {
                     TelaErro("Livro não encontrado")
                 } else {
                     TelaDetalhes(
                         livro = livro,
+                        isProcessing = state.isSaving, // <-- NOVO: Passa o estado
                         onMarcarComoLido = { viewModel.atualizarStatus(livro.id, "Lido") },
                         onMarcarComoFavorito = { isFavorito ->
                             viewModel.marcarFavorito(livro.id, isFavorito)
+                        },
+                        onDeletar = { // <-- NOVO: Implementação do Deletar
+                            viewModel.deletarLivro(livro.id) {
+                                navController.popBackStack()
+                            }
                         },
                         onBack = { navController.popBackStack() }
                     )
@@ -125,19 +122,14 @@ fun NavegacaoApp() {
             }
         }
 
-        // --- NOVA TELA (ADICIONAR LIVRO) (MODIFICADA) ---
+        // --- NOVA TELA (ADICIONAR LIVRO) ---
         composable("adicionar_livro") {
-            // --- MUDANÇA ---
-            // Não criamos um novo VM. Usamos o VM compartilhado.
-            // val viewModel: LivroViewModel = viewModel() // <-- LINHA ANTIGA REMOVIDA
             val state by viewModel.ui.collectAsState()
 
             TelaAdicionarLivro(
                 isSaving = state.isSaving,
                 onSalvar = { novoLivro ->
-                    // Chama a função no VM compartilhado
                     viewModel.adicionarLivro(novoLivro) {
-                        // onSucesso: Navega de volta
                         navController.popBackStack()
                     }
                 },
@@ -210,22 +202,26 @@ fun TelaPrincipal(
     }
 }
 
-// --- TelaDetalhes (Sem mudanças internas) ---
+// --- TelaDetalhes (MODIFICADA COM DELETAR E ALERT DIALOG) ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TelaDetalhes(
     livro: Livro,
+    isProcessing: Boolean, // <-- NOVO
     onMarcarComoLido: () -> Unit,
     onMarcarComoFavorito: (Boolean) -> Unit,
+    onDeletar: () -> Unit, // <-- NOVO
     onBack: () -> Unit
 ) {
     var isFavorito by remember { mutableStateOf(false) } // Lembre-se de corrigir isso (Bug #2)
+    var mostrarDialogoDeletar by remember { mutableStateOf(false) } // <-- NOVO: Estado para o diálogo
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text(text = livro.titulo) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, enabled = !isProcessing) { // Desabilita o voltar
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Voltar"
@@ -256,7 +252,7 @@ fun TelaDetalhes(
             Button(
                 onClick = onMarcarComoLido,
                 modifier = Modifier.fillMaxWidth(),
-                enabled = livro.status != "Lido"
+                enabled = livro.status != "Lido" && !isProcessing
             ) {
                 Text(if (livro.status == "Lido") "Já lido" else "Marcar como Lido")
             }
@@ -266,13 +262,58 @@ fun TelaDetalhes(
                     isFavorito = !isFavorito
                     onMarcarComoFavorito(isFavorito)
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isProcessing
             ) {
                 Text(if (isFavorito) "Remover dos Favoritos" else "Marcar como Favorito")
             }
+            Spacer(Modifier.height(24.dp))
+
+            // --- BOTÃO DE DELETAR ---
+            OutlinedButton(
+                onClick = { mostrarDialogoDeletar = true }, // Abre o diálogo
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isProcessing
+            ) {
+                Text("Deletar Livro")
+            }
+
+            // Overlay de Loading
+            if (isProcessing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 16.dp)
+                )
+            }
         }
     }
+
+    // --- DIÁLOGO DE CONFIRMAÇÃO ---
+    if (mostrarDialogoDeletar) {
+        AlertDialog(
+            onDismissRequest = { mostrarDialogoDeletar = false },
+            title = { Text("Confirmar Exclusão") },
+            text = { Text("Tem certeza que deseja deletar permanentemente o livro '${livro.titulo}'?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        mostrarDialogoDeletar = false
+                        onDeletar() // Chama a função de deletar no ViewModel
+                    }
+                ) {
+                    Text("Deletar")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { mostrarDialogoDeletar = false }
+                ) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
 }
+
 
 // --- TelaErro (Sem mudanças) ---
 @Composable
@@ -413,7 +454,7 @@ fun TelaAdicionarLivro(
 }
 
 
-// --- Previews (Sem mudanças) ---
+// --- Previews (Atualizados) ---
 
 @Preview(showBackground = true, name = "Tela Principal (Lista)")
 @Composable
@@ -456,13 +497,17 @@ fun PreviewTelaAdicionarLivro() {
     }
 }
 
-@Preview(showBackground = true, name = "Tela Adicionar Livro (Salvando)")
+@Preview(showBackground = true, name = "Tela Detalhes")
 @Composable
-fun PreviewTelaAdicionarLivroSalvando() {
+fun PreviewTelaDetalhes() {
     BibliotecaTheme {
-        TelaAdicionarLivro(
-            isSaving = true, // <-- Mostra o loading
-            onSalvar = {},
+        val livroMock = LivroFisico(id = "1", titulo = "O Poder do Agora", autor = "Eckhart Tolle", localizacaoPrateleira = "M-22", status = "Não lido")
+        TelaDetalhes(
+            livro = livroMock,
+            isProcessing = false,
+            onMarcarComoLido = {},
+            onMarcarComoFavorito = {},
+            onDeletar = {},
             onBack = {}
         )
     }
