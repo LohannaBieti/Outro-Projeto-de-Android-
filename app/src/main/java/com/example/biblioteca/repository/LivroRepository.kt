@@ -3,6 +3,7 @@ package com.example.biblioteca.repository
 import com.example.biblioteca.model.Livro
 import com.example.biblioteca.model.LivroDigital
 import com.example.biblioteca.model.LivroFisico
+import com.example.biblioteca.model.toMap
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
@@ -18,9 +19,8 @@ class LivroRepository {
             val titulo = doc.getString("titulo") ?: ""
             val autor = doc.getString("autor") ?: ""
             val status = doc.getString("status") ?: "Não lido"
-
-            // Lógica para ler o favorito que será salvo
             val favorito = doc.getBoolean("favorito") ?: false
+            val categoria = doc.getString("categoria") ?: "Sem Categoria" // <-- NOVO
 
             when (tipo) {
                 "fisico" -> LivroFisico(
@@ -29,7 +29,8 @@ class LivroRepository {
                     autor = autor,
                     localizacaoPrateleira = doc.getString("localizacaoPrateleira") ?: "",
                     status = status,
-                    // favorito = favorito // <-- Descomente QUANDO adicionar 'favorito' ao seu Model
+                    favorito = favorito,
+                    categoria = categoria // <-- NOVO
                 )
                 "digital" -> LivroDigital(
                     id = id,
@@ -37,7 +38,8 @@ class LivroRepository {
                     autor = autor,
                     url = doc.getString("url") ?: "",
                     status = status,
-                    // favorito = favorito // <-- Descomente QUANDO adicionar 'favorito' ao seu Model
+                    favorito = favorito,
+                    categoria = categoria // <-- NOVO
                 )
                 else -> null
             }
@@ -62,38 +64,24 @@ class LivroRepository {
     }
 
     suspend fun addLivro(livro: Livro): Result<Unit> = try {
-        // Constrói o mapa de dados a ser salvo
-        val dadosDoLivro: Map<String, Any> = when (livro) {
-            is LivroFisico -> mapOf(
-                "tipo" to "fisico", // Essencial para a leitura depois
-                "titulo" to livro.titulo,
-                "autor" to livro.autor,
-                "status" to livro.status, // "Não lido" por padrão
-                "localizacaoPrateleira" to livro.localizacaoPrateleira,
-                "favorito" to false // Valor padrão
-            )
-            is LivroDigital -> mapOf(
-                "tipo" to "digital", // Essencial para a leitura depois
-                "titulo" to livro.titulo,
-                "autor" to livro.autor,
-                "status" to livro.status, // "Não lido" por padrão
-                "url" to livro.url,
-                "favorito" to false // Valor padrão
-            )
-        }
-
-        // Adiciona os dados como um novo documento na coleção 'livros'
-        collection.add(dadosDoLivro).await()
+        // Usa a nova função de extensão .toMap()
+        collection.add(livro.toMap()).await()
         Result.success(Unit)
-
     } catch (e: Exception) {
         Result.failure(e)
     }
 
-    // --- NOVA FUNÇÃO DE DELETAR LIVRO ---
-    /**
-     * Deleta um livro do Firestore usando seu ID.
-     */
+    // --- NOVA FUNÇÃO DE EDITAR LIVRO ---
+    suspend fun editarLivro(livro: Livro): Result<Unit> = try {
+        // Usa a nova função de extensão .toMap()
+        // O .update() é mais seguro que o .set() pois não sobrescreve
+        // campos que não estejam no mapa.
+        collection.document(livro.id).update(livro.toMap()).await()
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
     suspend fun deletarLivro(id: String): Result<Unit> = try {
         collection.document(id).delete().await()
         Result.success(Unit)
